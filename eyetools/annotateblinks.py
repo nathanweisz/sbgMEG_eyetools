@@ -1,5 +1,6 @@
 #%%
 import numpy as np
+import mne
 
 # %% find on and offsets of blinks
 def find_blink_samples(signal):
@@ -43,3 +44,23 @@ def blinks_to_annotations(raw, blink_channel, affected_channels):
         annotations.append(ann)
 
     return annotations
+
+# %%
+def vpixx_default_blinkmap():
+    BLINK_MAP = {
+        "Left Eye Blink": (
+            "Left Eye x",
+            "Left Eye y",
+            "Left Eye Raw x",
+            "Left Eye Raw y",
+            "Left Eye Pupil Diameter",
+        ),
+        "Right Eye Blink": (
+            "Right Eye x",
+            "Right Eye y",
+            "Right Eye Raw x",
+            "Right Eye Raw y",
+            "Right Eye Pupil Diameter",
+        ),
+    }
+    return BLINK_MAP
