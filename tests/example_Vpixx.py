@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 from eyetools.annotateblinks import blinks_to_annotations, vpixx_default_blinkmap
 from scipy.signal import hilbert
 
+%matplotlib qt
+
 #et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
 #raw_eyelink = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
 
@@ -48,6 +50,7 @@ rawVPixx_clean = mne.preprocessing.eyetracking.interpolate_blinks(
 rawVPixx_clean.resample(1000);
 
 # %%
-rawVPixx_clean.plot(picks=['Left Eye x', 'Left Eye y'])
+rawVPixx_clean.plot(picks=['Left Eye x', 'Left Eye y',
+                           'Right Eye x', 'Right Eye y'])
 
 # %%
