@@ -5,43 +5,26 @@ from mne.viz.eyetracking import plot_gaze
 from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibration
 import numpy as np
 from matplotlib import pyplot as plt
+from eyetools.annotateblinks import blinks_to_annotations
 
-et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
-raw_eyelink = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
+#et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
+#raw_eyelink = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
 
-#%%
+#%% Uses same info for each subject
+#TO DO: write reader for VPixx calibration file
 dataVpixx, srate = readvpixxmat('data/resting_vpixx.mat')
 
-# %%
+# %% Convert to mne Raw object
 rawVPixx = make_eye_mne(dataVpixx, srate)
 
 #%%
 cals = vpixx_templatecalibration()
 rawVPixx = mne.preprocessing.eyetracking.convert_units(rawVPixx, calibration=cals, to="radians")
+
 #%%
 rawVPixx.plot(picks=['Left Eye Blink', 'Right Eye Blink'])
 
-# %% find on and offsets of blinks
-def find_blink_samples(signal):
-    """
-    Find contiguous segments where signal == 1.
-
-    Returns
-    -------
-    segments : list of (start_idx, end_idx)
-    """
-    signal = np.asarray(signal, dtype=int)
-
-    diff = np.diff(signal, prepend=0)
-    starts = np.where(diff == 1)[1]
-    ends = np.where(diff == -1)[1]
-
-    if signal.any() == 1:
-        ends = np.append(ends, len(signal))
-
-    return list(zip(starts, ends))
-
-#%%
+#%% Define channels in which to consider blinks
 
 BLINK_MAP = {
     "Left Eye Blink": (
@@ -60,31 +43,26 @@ BLINK_MAP = {
     ),
 }
 
-#%%
-def blinks_to_annotations(raw, blink_channel, affected_channels):
-    sfreq = raw.info["sfreq"]
-    blink_data = raw.get_data(picks=[blink_channel])[0]
+# %%
+all_annotations = []
 
-    segments = find_binary_segments(blink_data)
-
-    annotations = []
-
-    for start, end in segments:
-        onset = start / sfreq
-        duration = (end - start) / sfreq
-
-        ann = mne.Annotations(
-            onset=[onset],
-            duration=[duration],
-            description=["BAD_blink"],
-            ch_names=[affected_channels],
-        )
-        annotations.append(ann)
-
-    return annotations
-
+for blink_ch, affected in BLINK_MAP.items():
+    print(f"Processing {blink_ch} affecting {affected}")
+    anns = blinks_to_annotations(rawVPixx, blink_ch, affected)
+    all_annotations.extend(anns)
 
 #%%
-lblinks = rawVPixx.get_data(picks=['Left Eye Blink'])  
-test = find_blink_samples(lblinks)
+# Combine into a single Annotations object
+annotations = sum(all_annotations[1:], all_annotations[0])
+
+rawVPixx.set_annotations(annotations)
+
+# %%
+rawVPixx_clean = mne.preprocessing.eyetracking.interpolate_blinks(
+    rawVPixx, buffer=(0.05, 0.2), interpolate_gaze=True
+)
+
+# %%
+rawVPixx_clean.plot(picks=['Left Eye x', 'Right Eye x'])
+
 # %%
