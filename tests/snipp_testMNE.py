@@ -19,7 +19,6 @@ rawVPixx = make_eye_mne(dataVpixx, srate)
 cals = vpixx_templatecalibration()
 rawVPixx = mne.preprocessing.eyetracking.convert_units(rawVPixx, calibration=cals, to="radians")
 #%%
-#rawVPixx.plot()
 rawVPixx.plot(picks=['Left Eye Blink', 'Right Eye Blink'])
 
 # %% find on and offsets of blinks
