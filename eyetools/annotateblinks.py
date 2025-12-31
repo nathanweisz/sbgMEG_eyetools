@@ -64,3 +64,62 @@ def vpixx_default_blinkmap():
         ),
     }
     return BLINK_MAP
+
+# %% This is pure ChatGPT: unchecked.
+
+def _eye_from_ch_names(ch_names):
+    ch_names = [ch.lower() for ch in ch_names]
+    left = any("left" in ch for ch in ch_names)
+    right = any("right" in ch for ch in ch_names)
+    return left, right
+
+def blink_stats_from_annotations(annotations):
+    """
+    Extract blink statistics from mne.Annotations.
+
+    Returns
+    -------
+    stats : dict
+        Nested dict with keys 'left' and 'right', each containing:
+        - n_blinks
+        - durations (np.ndarray)
+        - ibi (np.ndarray)
+    """
+    onsets = {"left": [], "right": []}
+    durations = {"left": [], "right": []}
+
+    for ann in annotations:
+        if ann["description"] not in {"BAD_blink", "blink"}:
+            continue
+
+        left, right = _eye_from_ch_names(ann["ch_names"])
+
+        if left:
+            onsets["left"].append(float(ann["onset"]))
+            durations["left"].append(float(ann["duration"]))
+
+        if right:
+            onsets["right"].append(float(ann["onset"]))
+            durations["right"].append(float(ann["duration"]))
+
+    stats = {}
+
+    for eye in ("left", "right"):
+        o = np.array(onsets[eye])
+        d = np.array(durations[eye])
+
+        if len(o) > 1:
+            order = np.argsort(o)
+            o = o[order]
+            d = d[order]
+            ibi = np.diff(o)
+        else:
+            ibi = np.array([])
+
+        stats[eye] = {
+            "n_blinks": len(o),
+            "durations": d,
+            "ibi": ibi,
+        }
+
+    return stats
