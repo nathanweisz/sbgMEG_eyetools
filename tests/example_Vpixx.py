@@ -5,7 +5,7 @@ from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibrat
 import numpy as np
 from matplotlib import pyplot as plt
 from eyetools.annotateblinks import blinks_to_annotations, vpixx_default_blinkmap, blink_stats_from_annotations
-from scipy.signal import hilbert
+import eyetools.alignETMEGbyblinks as alignETMEGbyblinks
 
 #et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
 #raw_eyelink = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
@@ -61,7 +61,7 @@ plt.hist(stats['right']['durations'], bins=20)
 plt.hist(stats['left']['ibi'], bins=20)
 plt.hist(stats['right']['ibi'], bins=20)
 
-# %%
+
 
 
 #%% LOAD MEG eye channels
@@ -72,107 +72,39 @@ rawMEG.plot(picks=['MISC010', 'MISC011', 'EOG001', 'EOG002'])
 plt.close("all")
 #--> BLINKS CLEAR IN EOG ... MISC A LOT OF SHIT
 
-# %%
-meg_blink = rawMEG.get_data(picks=['MISC010', 'MISC011'])
-meg_blink = np.mean(meg_blink, axis=0)
-meg_env = np.abs(hilbert(meg_blink))
-meg_blink_bin = meg_env > np.percentile(meg_env, 99)
-
-#%% WHICH EYE MEASURED IN MEG??
-eye_blink = rawVPixx.get_data(picks=['Left Eye Blink'])
-eye_blink = np.any(eye_blink > 0.5, axis=0)
-
-# %%
-meg = meg_blink_bin.astype(float)
-eye = eye_blink.astype(float)
-
-from scipy.ndimage import binary_opening, binary_closing
-
-meg = binary_closing(binary_opening(meg, structure=np.ones(3)))
-eye = binary_closing(binary_opening(eye, structure=np.ones(3)))
+#%%
+meg_blink_bin = alignETMEGbyblinks.blinkfromMEG(rawMEG)
+eye_blink = alignETMEGbyblinks.blinkfromVPixx(rawVPixx)
 
 #%%
-def zscore(x):
-    return (x - x.mean()) / (x.std() + 1e-12)
-
-meg_z = zscore(meg.astype(float))
-eye_z = zscore(eye.astype(float))
+meg=alignETMEGbyblinks.binarize_binvector(meg_blink_bin)
+eye=alignETMEGbyblinks.binarize_binvector(eye_blink)
 
 #%%
-from scipy.signal import correlate
+meg_z = alignETMEGbyblinks.zscore(meg.astype(float))
+eye_z = alignETMEGbyblinks.zscore(eye.astype(float))
 
+#%% CHECK THAT SAMPLING RATES MATCH
 sfreq_meg = rawMEG.info['sfreq']
+sfreq_vpixx = rawVPixx_clean.info['sfreq']
+print(f"MEG srate: {sfreq_meg}, VPixx srate: {sfreq_vpixx}")
 
-max_lag_sec = 30
-max_lag = int(max_lag_sec * sfreq_meg)
-
-corr = correlate(meg_z, eye_z, mode="full")
-lags = np.arange(-len(eye_z) + 1, len(meg_z))
-
-mask = np.abs(lags) <= max_lag
-best_lag = lags[mask][np.argmax(corr[mask])]
-
-offset_sec = best_lag / sfreq_meg
-print(f"Coarse offset: {offset_sec:.3f} s")
+#%%
+offset_sec, best_lag = alignETMEGbyblinks.calcoffset_coarse(meg_z, eye_z)
 
 # %%
-
-def blink_onsets_from_binary(sig):
-    diff = np.diff(sig.astype(int), prepend=0)
-    return np.where(diff == 1)[0]
-
-meg_onsets = blink_onsets_from_binary(meg)
-eye_onsets = blink_onsets_from_binary(eye)
+meg_onsets = alignETMEGbyblinks.blink_onsets_from_binary(meg)
+eye_onsets = alignETMEGbyblinks.blink_onsets_from_binary(eye)
 
 #%%
-eye_onsets_shifted = eye_onsets + best_lag
+matchres = alignETMEGbyblinks.finematchingblinks(meg_onsets, eye_onsets, best_lag)
 
 #%%
-from scipy.spatial.distance import cdist
-
-D = cdist(
-    meg_onsets[:, None],
-    eye_onsets_shifted[:, None],
-    metric="euclidean"
-)
-
-pairs = np.argmin(D, axis=1)
-residuals = meg_onsets - eye_onsets_shifted[pairs]
-
-#%%
-good = np.abs(residuals) < int(0.2 * sfreq_meg)  # 200 ms tolerance
-residuals = residuals[good]
-
-#%%
-
-refined_offset_sec = (
-    best_lag + np.median(residuals)
-) / sfreq_meg
-
-print(f"Refined offset: {refined_offset_sec:.4f} s")
-
-# %%
-matched_meg = meg_onsets[good]
-matched_eye = eye_onsets[pairs[good]]
-
-coef = np.polyfit(matched_eye, matched_meg, 1)
-slope, intercept = coef
-
-print(f"Drift factor: {slope:.8f}")
-print(f"Intercept (samples): {intercept:.1f}")
-
-#%%
-
-t_eye = matched_eye / sfreq_meg
-t_meg = matched_meg / sfreq_meg
-
-#%%
-
 mne.preprocessing.realign_raw(
     rawVPixx,
     rawMEG,
-    t_eye,
-    t_meg,
+    matchres['t_eye'],
+    matchres['t_meg'],
     verbose="error",
 )
 
