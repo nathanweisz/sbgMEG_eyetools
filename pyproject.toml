@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sbgmeg-eyetools"
+version = "0.1.0"
+description = "Eye tools for Salzburg MEG workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Nathan Weisz" }
+]
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "mne"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sbgmeg_eyetools"]
