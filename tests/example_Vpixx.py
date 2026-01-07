@@ -4,7 +4,7 @@ from mne.viz.eyetracking import plot_gaze
 from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibration
 import numpy as np
 from matplotlib import pyplot as plt
-from eyetools.annotateblinks import blinks_to_annotations, vpixx_default_blinkmap, blink_stats_from_annotations
+from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations
 import eyetools.alignETMEGbyblinks as alignETMEGbyblinks
 
 #et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
@@ -20,23 +20,12 @@ cals = vpixx_templatecalibration()
 rawVPixx = mne.preprocessing.eyetracking.convert_units(rawVPixx, calibration=cals, to="radians")
 
 #%%
-rawVPixx.plot(picks=['Left Eye x', 'Left Eye y'])
+rawVPixx.plot(picks=['Left Eye x', 'Right Eye x'])
 plt.close("all")
 
 #%% Define channels in which to consider blinks
-BLINK_MAP = vpixx_default_blinkmap()
-
-# %%
-all_annotations = []
-
-for blink_ch, affected in BLINK_MAP.items():
-    print(f"Processing {blink_ch} affecting {affected}")
-    anns = blinks_to_annotations(rawVPixx, blink_ch, affected)
-    all_annotations.extend(anns)
-
-# Combine into a single Annotations object (MNE annotions object has neat .add feature)
-annotations = sum(all_annotations[1:], all_annotations[0])
-
+BLINK_MAP = vpixx_default_blinkmap()  
+annotations = call_blink_annotations(rawVPixx, BLINK_MAP)
 rawVPixx.set_annotations(annotations)
 
 # %%
@@ -60,8 +49,6 @@ plt.hist(stats['right']['durations'], bins=20)
 # %%
 plt.hist(stats['left']['ibi'], bins=20)
 plt.hist(stats['right']['ibi'], bins=20)
-
-
 
 
 #%% LOAD MEG eye channels

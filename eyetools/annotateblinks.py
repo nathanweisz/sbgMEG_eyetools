@@ -45,6 +45,19 @@ def blinks_to_annotations(raw, blink_channel, affected_channels):
 
     return annotations
 
+#%%
+def call_blink_annotations(raw, BLINK_MAP):
+    all_annotations = []
+
+    for blink_ch, affected in BLINK_MAP.items():
+        print(f"Processing {blink_ch} affecting {affected}")
+        anns = blinks_to_annotations(raw, blink_ch, affected)
+        all_annotations.extend(anns)
+
+    # Combine into a single Annotations object (MNE annotions object has neat .add feature)
+    annotations = sum(all_annotations[1:], all_annotations[0])
+    return annotations
+
 # %%
 def vpixx_default_blinkmap():
     BLINK_MAP = {
