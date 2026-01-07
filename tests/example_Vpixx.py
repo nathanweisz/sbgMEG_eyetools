@@ -20,7 +20,7 @@ cals = vpixx_templatecalibration()
 rawVPixx = mne.preprocessing.eyetracking.convert_units(rawVPixx, calibration=cals, to="radians")
 
 #%%
-rawVPixx.plot(picks=['Left Eye x', 'Right Eye x'])
+rawVPixx.plot(picks=['Left Eye y', 'Right Eye y'])
 plt.close("all")
 
 #%% Define channels in which to consider blinks
