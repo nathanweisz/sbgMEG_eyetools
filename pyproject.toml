@@ -20,4 +20,4 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["sbgmeg_eyetools"]
+packages = ["eyetools"]
