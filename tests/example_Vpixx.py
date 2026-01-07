@@ -63,11 +63,9 @@ plt.close("all")
 meg_blink_bin = alignETMEGbyblinks.blinkfromMEG(rawMEG)
 eye_blink = alignETMEGbyblinks.blinkfromVPixx(rawVPixx)
 
-#%%
 meg=alignETMEGbyblinks.binarize_binvector(meg_blink_bin)
 eye=alignETMEGbyblinks.binarize_binvector(eye_blink)
 
-#%%
 meg_z = alignETMEGbyblinks.zscore(meg.astype(float))
 eye_z = alignETMEGbyblinks.zscore(eye.astype(float))
 
@@ -104,7 +102,8 @@ del rawMEG
 #%%
 rawAll.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
-           'Left Eye x', 'Left Eye y'],
+           'Left Eye x', 'Left Eye y',
+           'Right Eye x', 'Right Eye y'],
     scalings={
         'misc': .1,      # adjust to taste
         'eog': 400e-6,     # ~200 µV
