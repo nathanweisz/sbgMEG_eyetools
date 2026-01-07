@@ -3,7 +3,7 @@ requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sbgmeg-eyetools"
+name = "sbgmeg_eyetools"
 version = "0.1.0"
 description = "Eye tools for Salzburg MEG workflows"
 readme = "README.md"
