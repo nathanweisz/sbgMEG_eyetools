@@ -1,6 +1,6 @@
 #%%
 import mne
-from mne.viz.eyetracking import plot_gaze
+#from mne.viz.eyetracking import plot_gaze
 from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibration
 import numpy as np
 from matplotlib import pyplot as plt
