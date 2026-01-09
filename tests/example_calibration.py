@@ -10,4 +10,11 @@ calL_res = analyze_vpixx_polyresponse(calpathL, plot=True, verbose=True)
 #%%
 calR_res = analyze_vpixx_polyresponse(calpathR, plot=True, verbose=True)
 
+# %% data frame
+calL_res[0]
+
+#%% summary stats
+calL_res[1]
+#%%
+calL_res[1]['n_targets']
 # %%
