@@ -1,6 +1,8 @@
 #%%
 import numpy as np
 import mne
+import pandas as pd
+import neurokit2 as nk
 
 # %% find on and offsets of blinks
 def find_blink_samples(signal):
@@ -136,3 +138,53 @@ def blink_stats_from_annotations(annotations):
         }
 
     return stats
+
+#%%
+#%%
+def get_blinks_eog_infos(
+    eog,
+    sampling_rate: float = 1000,
+    threshold_percentile: float = 75,
+    window_samples: int | None = None,
+):
+    """Extract blink onsets, offsets, and durations from EOG signal."""
+    
+    if window_samples is None:
+        window_samples = int(sampling_rate // 2)
+    
+    eog = np.abs(eog)
+    eog_signals, info = nk.eog_process(eog, sampling_rate=sampling_rate)
+    blink_peaks = np.where(eog_signals['EOG_Blinks'] == 1)[0]
+    
+    eog_clean_abs = np.abs(eog_signals['EOG_Clean'].values)
+    threshold = np.percentile(eog_clean_abs, threshold_percentile)
+    
+    blink_onsets = []
+    blink_offsets = []
+    
+    for peak in blink_peaks:
+        onset = peak
+        for i in range(peak, max(0, peak - window_samples), -1):
+            if eog_clean_abs[i] < threshold:
+                onset = i
+                break
+        
+        offset = peak
+        for i in range(peak, min(len(eog_signals), peak + window_samples)):
+            if eog_clean_abs[i] < threshold:
+                offset = i
+                break
+        
+        blink_onsets.append(onset)
+        blink_offsets.append(offset)
+    
+    return pd.DataFrame({
+        'peak_samples': blink_peaks,
+        'onset_samples': blink_onsets,
+        'offset_samples': blink_offsets,
+        'onset_sec': np.array(blink_onsets) / sampling_rate,
+        'offset_sec': np.array(blink_offsets) / sampling_rate,
+        'duration_sec': (np.array(blink_offsets) - np.array(blink_onsets)) / sampling_rate
+    })
+
+

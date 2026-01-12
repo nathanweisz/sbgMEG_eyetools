@@ -4,9 +4,10 @@ import mne
 from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibration
 import numpy as np
 from matplotlib import pyplot as plt
-from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations, find_blink_samples
+from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations, find_blink_samples, get_blinks_eog_infos
 import eyetools.alignETMEGbyblinks as alignETMEGbyblinks
 from matplotlib import pyplot as plt
+
 
 #%% Uses same info for each subject
 #TO DO: write reader for VPixx calibration file
@@ -24,7 +25,7 @@ rawVPixx.set_annotations(annotations)
 
 #
 rawVPixx_clean = mne.preprocessing.eyetracking.interpolate_blinks(
-    rawVPixx, buffer=(0.02, 0.1), interpolate_gaze=True
+    rawVPixx, buffer=(0.1, 0.2), interpolate_gaze=True
 )
 # Downsample to MEG sampling rate
 rawVPixx_clean.resample(1000);
@@ -81,7 +82,7 @@ rawAll.plot(picks=['EOG001', 'EOG002'])
 #%% USE MNE FUNCTION TO FIND EOG BLINKS
 eog_events = mne.preprocessing.find_eog_events(rawAll, 512, ch_name='EOG001')
 
-#%%
+#%% SETS EVENTS ON PEAKS
 rawAll.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
@@ -94,4 +95,50 @@ rawAll.plot(
     events=eog_events
 )
 
+# %% USE NEUROKIT FOR MORE INFOS
+eogdataraw = rawAll.get_data(picks=['EOG001'])
+
+blinks_df = get_blinks_eog_infos(
+    eogdataraw.flatten(),
+    sampling_rate=rawAll.info["sfreq"]
+)
+
+ann = mne.Annotations(onset=blinks_df['onset_sec'], 
+            duration=blinks_df['duration_sec'], 
+            description=['blink']*len(blinks_df['onset_sec']))
+
+rawAll.set_annotations(ann)
+
+#%%
+
+rawAll.plot(
+    picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
+           'Left Eye x', 'Left Eye y',
+           'Right Eye x', 'Right Eye y'],
+    scalings={
+        'misc': .1,      # adjust to taste
+        'eog': 400e-6,     # ~200 µV
+        'eyegaze': 0.05,   # ~0.05 rad (or ~3 deg)
+    },
+    #events=eog_events_nk
+)
+
+#%% Influence of low pass filtering
+rawAll.filter(l_freq=None, h_freq=30, picks=[
+    'Left Eye x', 'Left Eye y',
+    'Right Eye x', 'Right Eye y',
+])
+
+# %%
+rawAll.plot(
+    picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
+           'Left Eye x', 'Left Eye y',
+           'Right Eye x', 'Right Eye y'],
+    scalings={
+        'misc': .1,      # adjust to taste
+        'eog': 400e-6,     # ~200 µV
+        'eyegaze': 0.05,   # ~0.05 rad (or ~3 deg)
+    },
+    #events=eog_events_nk
+)
 # %%
