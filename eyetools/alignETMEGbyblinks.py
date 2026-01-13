@@ -227,6 +227,64 @@ def _ensure_sfreq(raw, target_sfreq, label="", verbose=True):
         )
     return raw
 
+def equalize_event_density_timebins(
+    t_eye,
+    t_meg,
+    bin_width_sec=20.0,
+    criterion="center",
+    min_events_per_bin=1,
+):
+    """
+    Downsample events so that each fixed-duration time bin
+    contributes approximately the same number of events.
+
+    Dense bins are capped; sparse bins are kept as-is.
+    """
+    t_eye = np.asarray(t_eye)
+    t_meg = np.asarray(t_meg)
+
+    t_min = t_eye.min()
+    t_max = t_eye.max()
+
+    edges = np.arange(t_min, t_max + bin_width_sec, bin_width_sec)
+    keep_idx = []
+
+    # collect indices per bin
+    bins = []
+    for b0, b1 in zip(edges[:-1], edges[1:]):
+        idx = np.where((t_eye >= b0) & (t_eye < b1))[0]
+        if len(idx) >= min_events_per_bin:
+            bins.append(idx)
+
+    if not bins:
+        raise RuntimeError("No bins contain enough events")
+
+    # cap = minimum non-empty bin size
+    cap = min(len(idx) for idx in bins)
+
+    for idx in bins:
+        if len(idx) <= cap:
+            keep_idx.extend(idx)
+        else:
+            if criterion == "center":
+                center = idx[len(idx) // 2]
+                keep_idx.append(center)
+            elif criterion == "jitter":
+                jitter = np.abs(t_eye[idx] - t_meg[idx])
+                keep_idx.append(idx[np.argmin(jitter)])
+            elif criterion == "random":
+                keep_idx.extend(
+                    np.random.choice(idx, cap, replace=False)
+                )
+            else:
+                raise ValueError("Unknown criterion")
+
+    keep_idx = np.sort(np.asarray(keep_idx))
+    return t_eye[keep_idx], t_meg[keep_idx]
+
+
+
+
 def wrapper_align_by_blinks(
     rawMEG,
     rawVPixx,
@@ -237,6 +295,8 @@ def wrapper_align_by_blinks(
     sfreq=1000,
     max_lag_sec=45,
     tolerance_sec=0.2,
+    uniform=False,
+    secbin=20,
     verbose=True,
 ):
 
@@ -276,14 +336,37 @@ def wrapper_align_by_blinks(
         tolerace=tolerance_sec,
     )
 
+    if uniform:
+        print("Using density-equalized blink matches for realignment.")
+        t_eye, t_meg = equalize_event_density_timebins(
+            matchres["t_eye"],
+            matchres["t_meg"],
+            bin_width_sec=secbin,
+            criterion="jitter",
+        )
+    else:
+        print("Using all blink matches for realignment.")
+        t_eye = matchres["t_eye"]
+        t_meg = matchres["t_meg"]
+
+    
     mne.preprocessing.realign_raw(
         rawVPixx,
         rawMEG,
-        matchres["t_eye"],
-        matchres["t_meg"],
+        t_eye,
+        t_meg,
         verbose="error",
     )
-
+    
+    '''
+    mne.preprocessing.realign_raw(
+        rawMEG,
+        rawVPixx,
+        t_meg,
+        t_eye,
+        verbose="error",
+    )
+    '''
     rawAll = rawMEG.copy()
     rawAll.add_channels([rawVPixx], force_update_info=True)
 

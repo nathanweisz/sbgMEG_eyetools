@@ -63,7 +63,7 @@ def make_eye_mne(eye_data, srate):
 
 #%%
 def vpixx_templatecalibration(resolution=(1920, 1080),
-                              size=(0.61, 0.61),
+                              size=(0.61, 0.34), #TO DO: check size
                               distance=0.82):
     """Create a template calibration dictionary for VPixx eye-tracking data.
     The only input that matters is screen resolution, size and distance.

@@ -30,7 +30,7 @@ mne.preprocessing.eyetracking.interpolate_blinks(
     rawVPixx, buffer=(0.02, 0.1), interpolate_gaze=True
 )
 # Downsample to MEG sampling rate
-rawVPixx.resample(1000);
+#rawVPixx.resample(1000);
 
 # %%
 rawVPixx.plot(picks=['Left Eye x', 'Left Eye y',
@@ -56,8 +56,11 @@ plt.close("all")
 #--> BLINKS CLEAR IN EOG ... MISC A LOT OF SHIT
 
 #%%
-rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG, rawVPixx, meg_threshold_percentile=99.5)
 
+rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG.copy(), rawVPixx.copy(), 
+                                                                     meg_threshold_percentile=99.5,
+                                                                     uniform=True, secbin=2
+                                                                     )
 #%%
 rawAll2.filter(None, 30, fir_design='firwin')
 

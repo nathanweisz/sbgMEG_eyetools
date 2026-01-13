@@ -34,8 +34,10 @@ rawVPixx.resample(1000);
 rawMEG = mne.io.read_raw_fif('data/resting_meg_trans_sss.fif', preload=True)
 
 #%%
-rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG, rawVPixx, meg_threshold_percentile=99.5)
-del rawMEG
+rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG.copy(), rawVPixx.copy(), 
+                                                                     meg_threshold_percentile=99.5,
+                                                                     uniform=True, secbin=2
+                                                                     )
 
 #%% EEG001 is vEOG
 rawAll2.plot(picks=['EOG001', 'EOG002'])
