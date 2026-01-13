@@ -1,5 +1,5 @@
 #%%
-#import mne
+import mne
 import numpy as np
 from scipy.fftpack import hilbert
 from scipy.ndimage import binary_opening, binary_closing
@@ -210,3 +210,81 @@ def finematchingblinks(meg_onsets, eye_onsets, best_lag, sfreq=1000, tolerace=0.
 
     return matchres
 
+#%%
+
+def _ensure_sfreq(raw, target_sfreq, label="", verbose=True):
+    current_sfreq = raw.info["sfreq"]
+    if not np.isclose(current_sfreq, target_sfreq):
+        if verbose:
+            print(
+                f"{label} sfreq={current_sfreq:.2f} Hz -> "
+                f"resampling to {target_sfreq:.2f} Hz"
+            )
+        raw = raw.copy().resample(
+            target_sfreq,
+            npad="auto",
+            verbose="error",
+        )
+    return raw
+
+def wrapper_align_by_blinks(
+    rawMEG,
+    rawVPixx,
+    meg_picks=("MISC010", "MISC011"),
+    meg_threshold_percentile=99,
+    vpixx_pick="Left Eye Blink",
+    vpixx_threshold=0.5,
+    sfreq=1000,
+    max_lag_sec=45,
+    tolerance_sec=0.2,
+    verbose=True,
+):
+
+    # --- Ensure consistent sampling frequency ---
+    rawMEG = _ensure_sfreq(rawMEG, sfreq, label="MEG", verbose=verbose)
+    rawVPixx = _ensure_sfreq(rawVPixx, sfreq, label="VPixx", verbose=verbose)
+
+    if verbose:
+        print(f"Using common sfreq = {sfreq} Hz")
+
+    # --- Blink extraction ---
+    meg_blink_bin = blinkfromMEG(
+        rawMEG, picks=list(meg_picks), threshold_percentile=meg_threshold_percentile
+    )
+    eye_blink = blinkfromVPixx(
+        rawVPixx, pick=vpixx_pick, threshold=vpixx_threshold
+    )
+
+    meg = binarize_binvector(meg_blink_bin)
+    eye = binarize_binvector(eye_blink)
+
+    meg_z = zscore(meg.astype(float))
+    eye_z = zscore(eye.astype(float))
+
+    offset_sec, best_lag = calcoffset_coarse(
+        meg_z, eye_z, sfreq=sfreq, max_lag_sec=max_lag_sec
+    )
+
+    meg_onsets = blink_onsets_from_binary(meg)
+    eye_onsets = blink_onsets_from_binary(eye)
+
+    matchres = finematchingblinks(
+        meg_onsets,
+        eye_onsets,
+        best_lag,
+        sfreq=sfreq,
+        tolerace=tolerance_sec,
+    )
+
+    mne.preprocessing.realign_raw(
+        rawVPixx,
+        rawMEG,
+        matchres["t_eye"],
+        matchres["t_meg"],
+        verbose="error",
+    )
+
+    rawAll = rawMEG.copy()
+    rawAll.add_channels([rawVPixx], force_update_info=True)
+
+    return rawAll, matchres, offset_sec, best_lag

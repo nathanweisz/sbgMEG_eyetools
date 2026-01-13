@@ -5,10 +5,7 @@ from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibrat
 import numpy as np
 from matplotlib import pyplot as plt
 from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations
-import eyetools.alignETMEGbyblinks as alignETMEGbyblinks
-
-#et_fpath = data_path() / "eeg-et" / "sub-01_task-plr_eyetrack.asc"
-#raw_eyelink = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
+from eyetools.alignETMEGbyblinks import wrapper_align_by_blinks
 
 #%% Uses same info for each subject
 #TO DO: write reader for VPixx calibration file
@@ -29,24 +26,23 @@ annotations = call_blink_annotations(rawVPixx, BLINK_MAP)
 rawVPixx.set_annotations(annotations)
 
 # %%
-rawVPixx_clean = mne.preprocessing.eyetracking.interpolate_blinks(
+mne.preprocessing.eyetracking.interpolate_blinks(
     rawVPixx, buffer=(0.02, 0.1), interpolate_gaze=True
 )
 # Downsample to MEG sampling rate
-rawVPixx_clean.resample(1000);
+rawVPixx.resample(1000);
 
 # %%
-rawVPixx_clean.plot(picks=['Left Eye x', 'Left Eye y',
+rawVPixx.plot(picks=['Left Eye x', 'Left Eye y',
                            'Right Eye x', 'Right Eye y'])
 plt.close("all")
 
 # %%
 stats = blink_stats_from_annotations(rawVPixx_clean.annotations)
 
-# %% MUCH LESS BLINKS RIGHT??
 plt.hist(stats['left']['durations'], bins=20)
 plt.hist(stats['right']['durations'], bins=20)
-# %%
+
 plt.hist(stats['left']['ibi'], bins=20)
 plt.hist(stats['right']['ibi'], bins=20)
 
@@ -60,47 +56,13 @@ plt.close("all")
 #--> BLINKS CLEAR IN EOG ... MISC A LOT OF SHIT
 
 #%%
-meg_blink_bin = alignETMEGbyblinks.blinkfromMEG(rawMEG)
-eye_blink = alignETMEGbyblinks.blinkfromVPixx(rawVPixx)
-
-meg=alignETMEGbyblinks.binarize_binvector(meg_blink_bin)
-eye=alignETMEGbyblinks.binarize_binvector(eye_blink)
-
-meg_z = alignETMEGbyblinks.zscore(meg.astype(float))
-eye_z = alignETMEGbyblinks.zscore(eye.astype(float))
-
-#%% CHECK THAT SAMPLING RATES MATCH
-sfreq_meg = rawMEG.info['sfreq']
-sfreq_vpixx = rawVPixx_clean.info['sfreq']
-print(f"MEG srate: {sfreq_meg}, VPixx srate: {sfreq_vpixx}")
+rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG, rawVPixx, meg_threshold_percentile=99.5)
 
 #%%
-offset_sec, best_lag = alignETMEGbyblinks.calcoffset_coarse(meg_z, eye_z)
-
-# %%
-meg_onsets = alignETMEGbyblinks.blink_onsets_from_binary(meg)
-eye_onsets = alignETMEGbyblinks.blink_onsets_from_binary(eye)
+rawAll2.filter(None, 30, fir_design='firwin')
 
 #%%
-matchres = alignETMEGbyblinks.finematchingblinks(meg_onsets, eye_onsets, best_lag)
-
-#%%
-mne.preprocessing.realign_raw(
-    rawVPixx,
-    rawMEG,
-    matchres['t_eye'],
-    matchres['t_meg'],
-    verbose="error",
-)
-
-#%%
-rawAll = rawMEG.copy()
-rawAll.add_channels([rawVPixx], force_update_info=True)
-
-del rawMEG
-
-#%%
-rawAll.plot(
+rawAll2.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
            'Right Eye x', 'Right Eye y'],
@@ -112,5 +74,6 @@ rawAll.plot(
 )
 
 plt.close("all")
+
 
 # %%

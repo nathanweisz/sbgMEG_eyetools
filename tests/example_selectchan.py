@@ -1,11 +1,10 @@
 #%%
 import mne
-#from mne.viz.eyetracking import plot_gaze
 from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibration
 import numpy as np
 from matplotlib import pyplot as plt
 from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations, find_blink_samples, get_blinks_eog_infos
-import eyetools.alignETMEGbyblinks as alignETMEGbyblinks
+from eyetools.alignETMEGbyblinks import wrapper_align_by_blinks
 from matplotlib import pyplot as plt
 
 
@@ -24,66 +23,28 @@ annotations = call_blink_annotations(rawVPixx, BLINK_MAP)
 rawVPixx.set_annotations(annotations)
 
 #
-rawVPixx_clean = mne.preprocessing.eyetracking.interpolate_blinks(
+mne.preprocessing.eyetracking.interpolate_blinks(
     rawVPixx, buffer=(0.1, 0.2), interpolate_gaze=True
 )
 # Downsample to MEG sampling rate
-rawVPixx_clean.resample(1000);
-
-stats = blink_stats_from_annotations(rawVPixx_clean.annotations)
+rawVPixx.resample(1000);
 
 #%%
 
 rawMEG = mne.io.read_raw_fif('data/resting_meg_trans_sss.fif', preload=True)
 
-#
-meg_blink_bin = alignETMEGbyblinks.blinkfromMEG(rawMEG)
-eye_blink = alignETMEGbyblinks.blinkfromVPixx(rawVPixx)
-
-meg=alignETMEGbyblinks.binarize_binvector(meg_blink_bin)
-eye=alignETMEGbyblinks.binarize_binvector(eye_blink)
-
-meg_z = alignETMEGbyblinks.zscore(meg.astype(float))
-eye_z = alignETMEGbyblinks.zscore(eye.astype(float))
-
-# CHECK THAT SAMPLING RATES MATCH
-sfreq_meg = rawMEG.info['sfreq']
-sfreq_vpixx = rawVPixx_clean.info['sfreq']
-print(f"MEG srate: {sfreq_meg}, VPixx srate: {sfreq_vpixx}")
-
-#
-offset_sec, best_lag = alignETMEGbyblinks.calcoffset_coarse(meg_z, eye_z)
-
-#
-meg_onsets = alignETMEGbyblinks.blink_onsets_from_binary(meg)
-eye_onsets = alignETMEGbyblinks.blink_onsets_from_binary(eye)
-
-#
-matchres = alignETMEGbyblinks.finematchingblinks(meg_onsets, eye_onsets, best_lag)
-
-#
-mne.preprocessing.realign_raw(
-    rawVPixx,
-    rawMEG,
-    matchres['t_eye'],
-    matchres['t_meg'],
-    verbose="error",
-)
-
-#
-rawAll = rawMEG.copy()
-rawAll.add_channels([rawVPixx], force_update_info=True)
-
+#%%
+rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG, rawVPixx, meg_threshold_percentile=99.5)
 del rawMEG
 
 #%% EEG001 is vEOG
-rawAll.plot(picks=['EOG001', 'EOG002'])
+rawAll2.plot(picks=['EOG001', 'EOG002'])
 
 #%% USE MNE FUNCTION TO FIND EOG BLINKS
-eog_events = mne.preprocessing.find_eog_events(rawAll, 512, ch_name='EOG001')
+eog_events = mne.preprocessing.find_eog_events(rawAll2, 512, ch_name='EOG001')
 
 #%% SETS EVENTS ON PEAKS
-rawAll.plot(
+rawAll2.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
            'Right Eye x', 'Right Eye y'],
@@ -96,22 +57,22 @@ rawAll.plot(
 )
 
 # %% USE NEUROKIT FOR MORE INFOS
-eogdataraw = rawAll.get_data(picks=['EOG001'])
+eogdataraw = rawAll2.get_data(picks=['EOG001'])
 
 blinks_df = get_blinks_eog_infos(
     eogdataraw.flatten(),
-    sampling_rate=rawAll.info["sfreq"]
+    sampling_rate=rawAll2.info["sfreq"]
 )
 
 ann = mne.Annotations(onset=blinks_df['onset_sec'], 
             duration=blinks_df['duration_sec'], 
             description=['blink']*len(blinks_df['onset_sec']))
 
-rawAll.set_annotations(ann)
+rawAll2.set_annotations(ann)
 
 #%%
 
-rawAll.plot(
+rawAll2.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
            'Right Eye x', 'Right Eye y'],
@@ -124,13 +85,13 @@ rawAll.plot(
 )
 
 #%% Influence of low pass filtering
-rawAll.filter(l_freq=None, h_freq=30, picks=[
+rawAll2.filter(l_freq=None, h_freq=30, picks=[
     'Left Eye x', 'Left Eye y',
     'Right Eye x', 'Right Eye y',
 ])
 
 # %%
-rawAll.plot(
+rawAll2.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
            'Right Eye x', 'Right Eye y'],
