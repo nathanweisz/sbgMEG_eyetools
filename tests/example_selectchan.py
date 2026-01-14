@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from eyetools.annotateblinks import vpixx_default_blinkmap, blink_stats_from_annotations, call_blink_annotations, find_blink_samples, get_blinks_eog_infos
 from eyetools.alignETMEGbyblinks import wrapper_align_by_blinks
-from matplotlib import pyplot as plt
+from eyetools.shiftsignals import align_raw_by_continuous_lag
 
 
 #%% Uses same info for each subject
@@ -38,15 +38,21 @@ rawAll2, matchres2, offset_sec2, best_lag2 = wrapper_align_by_blinks(rawMEG.copy
                                                                      meg_threshold_percentile=99.5,
                                                                      uniform=True, secbin=2
                                                                      )
+del rawMEG, rawVPixx
+
+#%%
+rawAligned, lag_info = align_raw_by_continuous_lag(rawAll2)
+
+rawAligned.filter(None, 30, fir_design='firwin') # dunno if needed
 
 #%% EEG001 is vEOG
-rawAll2.plot(picks=['EOG001', 'EOG002'])
+rawAligned.plot(picks=['EOG001', 'EOG002'])
 
 #%% USE MNE FUNCTION TO FIND EOG BLINKS
-eog_events = mne.preprocessing.find_eog_events(rawAll2, 512, ch_name='EOG001')
+eog_events = mne.preprocessing.find_eog_events(rawAligned, 512, ch_name='EOG001')
 
 #%% SETS EVENTS ON PEAKS
-rawAll2.plot(
+rawAligned.plot(
     picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
            'Left Eye x', 'Left Eye y',
            'Right Eye x', 'Right Eye y'],
@@ -59,49 +65,30 @@ rawAll2.plot(
 )
 
 # %% USE NEUROKIT FOR MORE INFOS
-eogdataraw = rawAll2.get_data(picks=['EOG001'])
+eogdataraw = rawAligned.get_data(picks=['EOG001'])
 
 blinks_df = get_blinks_eog_infos(
     eogdataraw.flatten(),
-    sampling_rate=rawAll2.info["sfreq"]
+    sampling_rate=rawAligned.info["sfreq"]
 )
 
 ann = mne.Annotations(onset=blinks_df['onset_sec'], 
             duration=blinks_df['duration_sec'], 
             description=['blink']*len(blinks_df['onset_sec']))
 
-rawAll2.set_annotations(ann)
+rawAligned.set_annotations(ann)
 
 #%%
-
-rawAll2.plot(
-    picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
-           'Left Eye x', 'Left Eye y',
-           'Right Eye x', 'Right Eye y'],
+rawAligned.plot(
+    picks=[
+        "MISC010", "MISC011",
+        "Left Eye x", "Left Eye y", "Left Eye Pupil Diameter",
+        "Right Eye x", "Right Eye y", "Right Eye Pupil Diameter",
+    ],
     scalings={
-        'misc': .1,      # adjust to taste
-        'eog': 400e-6,     # ~200 µV
-        'eyegaze': 0.05,   # ~0.05 rad (or ~3 deg)
+        "misc": 0.1,
+        "eog": 400e-6,
+        "eyegaze": 0.05,
+        "pupil": 5
     },
-    #events=eog_events_nk
 )
-
-#%% Influence of low pass filtering
-rawAll2.filter(l_freq=None, h_freq=30, picks=[
-    'Left Eye x', 'Left Eye y',
-    'Right Eye x', 'Right Eye y',
-])
-
-# %%
-rawAll2.plot(
-    picks=['MISC010', 'MISC011', 'EOG001', 'EOG002',
-           'Left Eye x', 'Left Eye y',
-           'Right Eye x', 'Right Eye y'],
-    scalings={
-        'misc': .1,      # adjust to taste
-        'eog': 400e-6,     # ~200 µV
-        'eyegaze': 0.05,   # ~0.05 rad (or ~3 deg)
-    },
-    #events=eog_events_nk
-)
-# %%

@@ -5,6 +5,7 @@ from scipy.fftpack import hilbert
 from scipy.ndimage import binary_opening, binary_closing
 from scipy.signal import correlate, hilbert
 from scipy.spatial.distance import cdist
+import matplotlib.pyplot as plt
 
 # %%
 def blinkfromMEG(raw, picks=['MISC010', 'MISC011'], threshold_percentile=99):
@@ -349,7 +350,12 @@ def wrapper_align_by_blinks(
         t_eye = matchres["t_eye"]
         t_meg = matchres["t_meg"]
 
-    
+
+    plt.hist(t_eye, bins=30, alpha=0.5, label='Eye Tracker')
+    plt.hist(t_meg, bins=30, alpha=0.5, label='Eye Tracker')
+    plt.legend()
+    plt.title('Distribution of missing data onsets used for alignment')
+
     mne.preprocessing.realign_raw(
         rawVPixx,
         rawMEG,
