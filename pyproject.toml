@@ -17,6 +17,7 @@ dependencies = [
   "scipy",
   "matplotlib",
   "mne"
+  "opencv"
 ]
 
 [tool.hatch.build.targets.wheel]

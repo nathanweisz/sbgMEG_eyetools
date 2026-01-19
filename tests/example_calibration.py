@@ -12,7 +12,6 @@ calR_res = analyze_vpixx_polyresponse(calpathR, plot=True, verbose=True)
 
 # %% data frame
 calL_res[0]
-
 #%% summary stats
 calL_res[1]
 #%%
