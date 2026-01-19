@@ -8,21 +8,34 @@ from scipy.spatial.distance import cdist
 import matplotlib.pyplot as plt
 
 # %%
-def blinkfromMEG(raw, picks=['MISC010', 'MISC011'], threshold_percentile=99):
-    '''
-    Pass eye tracking channels from MEG raw data to extract blink binary vector.
-    (here we label everything as “Blink“. in many cases it is simple data loss,
-    that also occurs in VPixx mat-files as blinks)
-    
-    :param raw: raw MEG data including eye tracking channels
-    :param picks: Labels of eye tracking channels in MEG data
-    :param threshold_percentile: Percentile threshold to detect blinks
-    :return: Binary vector indicating blink presence
-    '''
-    meg_blink = raw.get_data(picks=picks)
+def blinkfromMEG(raw, picks=['MISC010', 'MISC011'],
+                 threshold_percentile=99, hpfreq=1.0):
+    """
+    Extract blink binary vector from MEG eye-tracking channels.
+    """
+
+    # work on a copy to avoid side effects
+    raw_picks = raw.copy()
+
+    # apply filter ONLY to selected channels
+    raw_picks.filter(
+        hpfreq,
+        None,
+        picks=picks,
+        fir_design="firwin",
+        verbose=False,
+    )
+
+    # extract data
+    meg_blink = raw_picks.get_data(picks=picks)
     meg_blink = np.mean(meg_blink, axis=0)
+
+    # envelope
     meg_env = np.abs(hilbert(meg_blink))
+
+    # threshold
     meg_blink_bin = meg_env > np.percentile(meg_env, threshold_percentile)
+
     return meg_blink_bin
 
 #%% WHICH EYE MEASURED IN MEG??
@@ -96,11 +109,14 @@ def calcoffset_coarse(meg_z, eye_z, sfreq =1000, max_lag_sec=45):
     lags = np.arange(-len(eye_z) + 1, len(meg_z))
 
     mask = np.abs(lags) <= max_lag
+    best_corr = np.argmax(corr[mask])
+    denom = (np.linalg.norm(meg_z) * np.linalg.norm(eye_z)) + 1e-12
+    best_corr = best_corr / denom
     best_lag = lags[mask][np.argmax(corr[mask])]
 
     offset_sec = best_lag / sfreq
     print(f"Coarse offset: {offset_sec:.3f} s")
-    return offset_sec, best_lag
+    return offset_sec, best_lag, best_corr
 
 #%%
 def blink_onsets_from_binary(sig):
@@ -283,7 +299,112 @@ def equalize_event_density_timebins(
     keep_idx = np.sort(np.asarray(keep_idx))
     return t_eye[keep_idx], t_meg[keep_idx]
 
+#%%
 
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import zscore
+
+
+def find_meg_blink_thresholds(
+    rawMEG,
+    rawVPixx,
+    meg_picks = ("MISC010", "MISC011"),
+    vpixx_pick = "Left Eye Blink",
+    vpixx_threshold = 0.5,
+    thresholds = np.arange(90, 100, 1),
+    max_lag_sec=45,
+    plot=True,
+):
+    """
+    Sweep MEG blink detection thresholds and evaluate offset and correlation
+    stability against VPixx blinks.
+
+    Parameters
+    ----------
+    rawMEG : mne.io.Raw
+        MEG raw object.
+    rawVPixx : mne.io.Raw
+        VPixx raw object.
+    meg_picks : list of str
+        MEG channel names used for blink detection.
+    vpixx_pick : str
+        VPixx channel name used for blink detection.
+    vpixx_threshold : float
+        Threshold for VPixx blink detection.
+    thresholds : array-like
+        Percentile thresholds to sweep (e.g. np.arange(90, 100)).
+    max_lag_sec : float
+        Maximum lag (seconds) for cross-correlation.
+    plot : bool
+        Whether to plot offsets and correlations.
+
+    Returns
+    -------
+    offsets : np.ndarray
+        Estimated offsets (seconds) for each threshold.
+    correlations : np.ndarray
+        Maximum correlation values for each threshold.
+    """
+
+    sfreq = rawMEG.info["sfreq"]
+
+    rawMEG = _ensure_sfreq(rawMEG, sfreq, label="MEG", verbose=True)
+    rawVPixx = _ensure_sfreq(rawVPixx, sfreq, label="VPixx", verbose=True)
+
+    offsets = []
+    correlations = []
+
+    # VPixx blink does not depend on MEG threshold → compute once
+    eye_blink = blinkfromVPixx(
+        rawVPixx,
+        pick=vpixx_pick,
+        threshold=vpixx_threshold,
+    )
+    eye = binarize_binvector(eye_blink)
+    eye_z = zscore(eye.astype(float))
+
+    for thr in thresholds:
+        meg_blink_bin = blinkfromMEG(
+            rawMEG,
+            picks=list(meg_picks),
+            threshold_percentile=thr,
+        )
+
+        meg = binarize_binvector(meg_blink_bin)
+        meg_z = zscore(meg.astype(float))
+
+        offset_sec, best_lag, best_corr = calcoffset_coarse(
+            meg_z,
+            eye_z,
+            sfreq,
+            max_lag_sec=max_lag_sec,
+        )
+
+        offsets.append(offset_sec)
+        correlations.append(best_corr)
+
+    offsets = np.asarray(offsets)
+    correlations = np.asarray(correlations)
+    best_thresh = thresholds[np.argmax(correlations)]
+
+    if plot:
+        plt.figure()
+        plt.plot(thresholds, offsets, marker="o")
+        plt.xlabel("MEG threshold percentile")
+        plt.ylabel("Offset (s)")
+        plt.title("Stability of offset estimation")
+        plt.show()
+
+        plt.figure()
+        plt.plot(thresholds, correlations, marker="o")
+        plt.xlabel("MEG threshold percentile")
+        plt.ylabel("Max correlation")
+        plt.title("Stability of correlation estimation")
+        plt.show()
+
+    return best_thresh,offsets, correlations
+#%%
 
 
 def wrapper_align_by_blinks(
@@ -322,7 +443,7 @@ def wrapper_align_by_blinks(
     meg_z = zscore(meg.astype(float))
     eye_z = zscore(eye.astype(float))
 
-    offset_sec, best_lag = calcoffset_coarse(
+    offset_sec, best_lag, best_corr = calcoffset_coarse(
         meg_z, eye_z, sfreq=sfreq, max_lag_sec=max_lag_sec
     )
 
@@ -351,8 +472,8 @@ def wrapper_align_by_blinks(
         t_meg = matchres["t_meg"]
 
 
-    plt.hist(t_eye, bins=30, alpha=0.5, label='Eye Tracker')
-    plt.hist(t_meg, bins=30, alpha=0.5, label='Eye Tracker')
+    plt.hist(t_eye, bins=30, alpha=0.5, label='VPIXX Eye Tracker')
+    plt.hist(t_meg, bins=30, alpha=0.5, label='MEG Eye Tracker')
     plt.legend()
     plt.title('Distribution of missing data onsets used for alignment')
 
