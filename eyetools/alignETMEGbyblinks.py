@@ -317,7 +317,7 @@ def find_meg_blink_thresholds(
     plot=True,
 ):
     """
-    Sweep MEG blink detection thresholds and evaluate offset and correlation
+    Sweep MEG “blink“ detection (from MISC) thresholds and evaluate offset and correlation
     stability against VPixx blinks.
 
     Parameters
@@ -405,7 +405,6 @@ def find_meg_blink_thresholds(
 
     return best_thresh,offsets, correlations
 #%%
-
 
 def wrapper_align_by_blinks(
     rawMEG,
@@ -498,3 +497,221 @@ def wrapper_align_by_blinks(
     rawAll.add_channels([rawVPixx], force_update_info=True)
 
     return rawAll, matchres, offset_sec, best_lag
+
+#%%
+def wrapper_align_by_dataloss(
+    rawMEG,
+    rawVPixx,
+    meg_picks=("MISC010", "MISC011"),
+    vpixx_pick="Left Eye Blink",
+    eps=1e-6,
+    sfreq=1000,
+    min_duration=.01,
+    uniform=False,
+    secbin=20,
+    verbose=True,
+):
+
+    # --- Ensure consistent sampling frequency ---
+    rawMEG = _ensure_sfreq(rawMEG, sfreq, label="MEG", verbose=verbose)
+    rawVPixx = _ensure_sfreq(rawVPixx, sfreq, label="VPixx", verbose=verbose)
+
+    if verbose:
+        print(f"Using common sfreq = {sfreq} Hz")
+
+    # --- Blink extraction ---
+    meg_blink_bin = blinkfromMEG(
+        rawMEG, picks=list(meg_picks), threshold_percentile=meg_threshold_percentile
+    )
+    eye_blink = blinkfromVPixx(
+        rawVPixx, pick=vpixx_pick, threshold=vpixx_threshold
+    )
+
+    meg = binarize_binvector(meg_blink_bin)
+    eye = binarize_binvector(eye_blink)
+
+    meg_z = zscore(meg.astype(float))
+    eye_z = zscore(eye.astype(float))
+
+    offset_sec, best_lag, best_corr = calcoffset_coarse(
+        meg_z, eye_z, sfreq=sfreq, max_lag_sec=max_lag_sec
+    )
+
+    meg_onsets = blink_onsets_from_binary(meg)
+    eye_onsets = blink_onsets_from_binary(eye)
+
+    matchres = finematchingblinks(
+        meg_onsets,
+        eye_onsets,
+        best_lag,
+        sfreq=sfreq,
+        tolerace=tolerance_sec,
+    )
+
+    if uniform:
+        print("Using density-equalized blink matches for realignment.")
+        t_eye, t_meg = equalize_event_density_timebins(
+            matchres["t_eye"],
+            matchres["t_meg"],
+            bin_width_sec=secbin,
+            criterion="jitter",
+        )
+    else:
+        print("Using all blink matches for realignment.")
+        t_eye = matchres["t_eye"]
+        t_meg = matchres["t_meg"]
+
+
+    plt.hist(t_eye, bins=30, alpha=0.5, label='VPIXX Eye Tracker')
+    plt.hist(t_meg, bins=30, alpha=0.5, label='MEG Eye Tracker')
+    plt.legend()
+    plt.title('Distribution of missing data onsets used for alignment')
+
+    mne.preprocessing.realign_raw(
+        rawVPixx,
+        rawMEG,
+        t_eye,
+        t_meg,
+        verbose="error",
+    )
+    
+    '''
+    mne.preprocessing.realign_raw(
+        rawMEG,
+        rawVPixx,
+        t_meg,
+        t_eye,
+        verbose="error",
+    )
+    '''
+    rawAll = rawMEG.copy()
+    rawAll.add_channels([rawVPixx], force_update_info=True)
+
+    return rawAll, matchres, offset_sec, best_lag
+
+def datalossfromMEG(rawMEG, picks=['MISC010', 'MISC011'],
+                 eps=1e-6, min_duration=0.01):
+    """
+    Extract data loss binary vector from MEG eye-tracking channels.
+    """
+    # work on a copy to avoid side effects
+    raw_picks = rawMEG.copy()
+
+
+    # extract data
+    meg_blink = raw_picks.get_data(picks=picks)
+    meg_blink = np.mean(meg_blink, axis=0)
+
+
+    diff = np.abs(np.diff(meg_blink))
+    flat = diff < eps
+    flat = np.r_[False, flat]
+
+    min_samples = int(min_duration * raw_picks.info['sfreq'])
+
+    edges = np.diff(flat.astype(int))
+    starts = np.where(edges == 1)[0] + 1
+    ends = np.where(edges == -1)[0] + 1
+    if flat[-1]:
+        ends = np.r_[ends, len(flat)]
+
+    lengths = ends - starts
+    valid = lengths >= min_samples
+
+    plateau_mask = np.zeros_like(flat, dtype=int)
+    for s, e in zip(starts[valid], ends[valid]):
+        plateau_mask[s:e] = 1
+
+    return plateau_mask
+
+#%%
+'''
+from eyetools.alignETMEGbyblinks import (
+    _ensure_sfreq, blinkfromVPixx, binarize_binvector,
+    zscore, calcoffset_coarse,blink_onsets_from_binary,
+    finematchingblinks, equalize_event_density_timebins)
+'''
+def wrapper_align_by_dataloss(
+    rawMEG,
+    rawVPixx,
+    meg_picks=("MISC010", "MISC011"),
+    vpixx_pick="Left Eye Blink",
+    vpixx_threshold=0.5,
+    max_lag_sec=45,
+    tolerance_sec=0.2,
+    eps=1e-6,
+    sfreq=1000,
+    min_duration=.01,
+    uniform=False,
+    secbin=20,
+    verbose=True,
+):
+
+    # --- Ensure consistent sampling frequency ---
+    rawMEG = _ensure_sfreq(rawMEG, sfreq, label="MEG", verbose=verbose)
+    rawVPixx = _ensure_sfreq(rawVPixx, sfreq, label="VPixx", verbose=verbose)
+
+    if verbose:
+        print(f"Using common sfreq = {sfreq} Hz")
+
+    # --- Blink extraction ---
+    meg_blink_bin = datalossfromMEG(
+        rawMEG, picks=list(meg_picks), eps=eps, min_duration=min_duration
+    )
+    eye_blink = blinkfromVPixx(
+        rawVPixx, pick=vpixx_pick, threshold=vpixx_threshold
+    )
+
+    meg = binarize_binvector(meg_blink_bin)
+    eye = binarize_binvector(eye_blink)
+
+    meg_z = zscore(meg.astype(float))
+    eye_z = zscore(eye.astype(float))
+
+    offset_sec, best_lag, best_corr = calcoffset_coarse(
+        meg_z, eye_z, sfreq=sfreq, max_lag_sec=max_lag_sec
+    )
+
+    meg_onsets = blink_onsets_from_binary(meg)
+    eye_onsets = blink_onsets_from_binary(eye)
+
+    matchres = finematchingblinks(
+        meg_onsets,
+        eye_onsets,
+        best_lag,
+        sfreq=sfreq,
+        tolerace=tolerance_sec,
+    )
+
+    if uniform:
+        print("Using density-equalized blink matches for realignment.")
+        t_eye, t_meg = equalize_event_density_timebins(
+            matchres["t_eye"],
+            matchres["t_meg"],
+            bin_width_sec=secbin,
+            criterion="jitter",
+        )
+    else:
+        print("Using all data losses for realignment.")
+        t_eye = matchres["t_eye"]
+        t_meg = matchres["t_meg"]
+
+
+    plt.hist(t_eye, bins=30, alpha=0.5, label='VPIXX Eye Tracker')
+    plt.hist(t_meg, bins=30, alpha=0.5, label='MEG Eye Tracker')
+    plt.legend()
+    plt.title('Distribution of missing data onsets used for alignment')
+
+    mne.preprocessing.realign_raw(
+        rawVPixx,
+        rawMEG,
+        t_eye,
+        t_meg,
+        verbose="error",
+    )
+    
+    rawAll = rawMEG.copy()
+    rawAll.add_channels([rawVPixx], force_update_info=True)
+
+    return rawAll, matchres, offset_sec, best_lag
+
