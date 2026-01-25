@@ -1,6 +1,7 @@
 #Data
 *.mat
 *.fif
+*.xdf
 
 .pixi
 pixi.toml

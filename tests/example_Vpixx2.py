@@ -7,7 +7,6 @@ from matplotlib import pyplot as plt
 from eyetools.annotateblinks import vpixx_default_blinkmap, call_blink_annotations
 from eyetools.alignETMEGbyblinks import wrapper_align_by_dataloss
 from eyetools.shiftsignals import align_raw_by_continuous_lag
-
 #%%
 
 dataVpixx, srate = readvpixxmat('data/resting_vpixx.mat')
