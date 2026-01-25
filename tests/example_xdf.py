@@ -160,11 +160,15 @@ raw = lsl2mneraw(
     trigger=trigger,
     trigger_time=trigger_time,)
 
-raw.filter(.5, 20, picks=['eeg', 'eyegaze', 'pupil'])
+raw.filter(.5, 25, picks='eeg')
+raw.filter(None, 6, picks='pupil')
+raw.filter(None, 25, picks='eyegaze')
+
 #%%
 
 raw.plot(picks=['gaze_normal0_x', 'gaze_normal0_y', 
-                'gaze_normal1_x', 'gaze_normal1_y'], scalings=dict(eyegaze=0.5, pupil=5))
+                'gaze_normal1_x', 'gaze_normal1_y',
+                'diameter0_2d', 'diameter1_2d'], scalings=dict(eyegaze=0.5, pupil=15))
 # %%
 raw.plot(picks=['low_confidence'], scalings=dict(misc=1))
 
