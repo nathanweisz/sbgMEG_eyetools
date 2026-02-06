@@ -188,12 +188,14 @@ def get_blinks_eog_infos(
     })
 
 #%%
-def add_blinkvec2raw(raw, hp_freq = .1, lp_freq = 10, 
-                     eoglab=['EOG001'],
-                     thresh = 75,
-                     ):
-    
-        """
+def add_blinkvec2raw(
+    raw,
+    hp_freq=0.1,
+    lp_freq=10,
+    eoglab=None,
+    thresh=75,
+):
+    """
     Detect eye blinks from an EOG channel and add them to an MNE Raw object
     as both a binary blink channel and blink annotations.
 
@@ -212,104 +214,83 @@ def add_blinkvec2raw(raw, hp_freq = .1, lp_freq = 10,
         annotations.
 
     hp_freq : float, optional
-        High-pass filter cutoff frequency (Hz) applied to the EOG signal
-        before blink detection. Defaults to 0.1 Hz.
+        High-pass filter cutoff frequency (Hz). Defaults to 0.1 Hz.
 
     lp_freq : float, optional
-        Low-pass filter cutoff frequency (Hz) applied to the EOG signal
-        before blink detection. Defaults to 10 Hz.
+        Low-pass filter cutoff frequency (Hz). Defaults to 10 Hz.
 
-    eoglab : list of str, optional
-        List of channel names used for blink detection. Typically a
-        vertical EOG channel (e.g., ``['EOG001']``). Defaults to
+    eoglab : list of str | None, optional
+        Channel names used for blink detection. If None, defaults to
         ``['EOG001']``.
 
     thresh : float, optional
         Percentile (0–100) used as the amplitude threshold for blink
-        detection. Higher values make detection more conservative.
-        Passed to ``get_blinks_eog_infos`` as ``threshold_percentile``.
-        Defaults to 75.
+        detection. Defaults to 75.
 
     Returns
     -------
     raw : mne.io.Raw
-        The modified Raw object containing:
-        - an additional channel named ``'BLINK'`` (type ``'misc'``),
-          where blink periods are marked with 1 and non-blink periods
-          with 0;
-        - MNE Annotations marking blink onsets and durations.
+        The modified Raw object with an added ``'BLINK'`` channel and
+        blink annotations.
 
     blinks_df : pandas.DataFrame
-        DataFrame containing blink information as returned by
-        ``get_blinks_eog_infos``. Expected columns include:
-        ``'onset_samples'``, ``'offset_samples'``,
-        ``'onset_sec'``, and ``'duration_sec'``.
-
-    Notes
-    -----
-    - Blink detection is performed on a copy of the raw data to avoid
-      altering the original EOG signal.
-    - The blink vector is aligned to ``raw.n_times`` and clipped to
-      valid sample indices.
-    - The added ``'BLINK'`` channel is intended for analysis convenience
-      (e.g., regression, masking, or visualization), not for artifact
-      correction.
-    - Setting ``ch_types=['eog']`` instead of ``'misc'`` is possible if
-      EOG-specific handling is desired.
-
-    See Also
-    --------
-    mne.Annotations
-    mne.io.Raw.add_channels
+        DataFrame containing blink onset and duration information.
     """
-        
-    eogdataraw = raw.copy().filter(hp_freq,lp_freq,picks=eoglab).get_data(picks=eoglab)
- 
+    if eoglab is None:
+        eoglab = ['EOG001']
+
+    sfreq = raw.info["sfreq"]
+    n_times = raw.n_times
+
+    # --- Filter EOG (on a copy, no side effects)
+    eog = (
+        raw.copy()
+        .filter(hp_freq, lp_freq, picks=eoglab)
+        .get_data(picks=eoglab)
+    )
+
+    if eog.shape[0] > 1:
+        eog = eog.mean(axis=0)  # explicit channel reduction
+    else:
+        eog = eog[0]
+
+    # --- Blink detection
     blinks_df = get_blinks_eog_infos(
-        eogdataraw.flatten(),
-        sampling_rate=raw.info["sfreq"],
-        threshold_percentile = thresh
+        eog,
+        sampling_rate=sfreq,
+        threshold_percentile=thresh,
     )
 
- 
-    n_samples = eogdataraw.shape[-1]
-    blink_vec = np.zeros(n_samples, dtype=int)
- 
-    first = raw.first_samp
-    n_samples = raw.n_times
- 
-    onsets = blinks_df["onset_samples"].to_numpy(int)
-    offsets = blinks_df["offset_samples"].to_numpy(int)
- 
-    onsets = np.clip(onsets, 0, n_samples)
-    offsets = np.clip(offsets, 0, n_samples)
- 
-    blink_vec = np.zeros(n_samples, dtype=int)
+    # --- Build blink vector
+    blink_vec = np.zeros(n_times, dtype=np.int8)
+
+    onsets = np.clip(
+        blinks_df["onset_samples"].to_numpy(int), 0, n_times
+    )
+    offsets = np.clip(
+        blinks_df["offset_samples"].to_numpy(int), 0, n_times
+    )
+
     for on, off in zip(onsets, offsets):
-        if off > on:
-            blink_vec[on:off] = 1
- 
-    info_blink = mne.create_info(
+        blink_vec[on:off] = 1
+
+    # --- Add blink channel
+    info = mne.create_info(
         ch_names=["BLINK"],
-        sfreq=raw.info["sfreq"],
-        ch_types=["misc"]   # or "eog" if you prefer
+        sfreq=sfreq,
+        ch_types=["misc"],
     )
- 
-    # Create RawArray (needs shape: n_channels x n_times)
-    blink_raw = mne.io.RawArray(
-        blink_vec[np.newaxis, :],
-        info_blink
-    )
- 
-    # Add to raw
+
+    blink_raw = mne.io.RawArray(blink_vec[np.newaxis, :], info)
     raw.add_channels([blink_raw], force_update_info=True)
- 
-    ann = mne.Annotations(onset=blinks_df['onset_sec'],
-    duration=blinks_df['duration_sec'],
-    description=['blink']*len(blinks_df['onset_sec']))
- 
-    raw.set_annotations(ann)
- 
+
+    # --- Add annotations (append, do not overwrite)
+    blink_ann = mne.Annotations(
+        onset=blinks_df["onset_sec"],
+        duration=blinks_df["duration_sec"],
+        description=["blink"] * len(blinks_df),
+    )
+
+    raw.set_annotations(raw.annotations + blink_ann)
+
     return raw, blinks_df
-
-

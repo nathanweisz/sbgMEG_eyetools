@@ -8,7 +8,7 @@ from eyetools.annotateblinks import add_blinkvec2raw
 raw = mne.io.read_raw_fif('data/20020127evab_resting-raw.fif', preload=True)
 
 #%%
-raw, blinks_df = add_blinkvec2raw(raw)
+raw, blinks_df = add_blinkvec2raw(raw,thresh=50)
 
 # %%
 raw.plot(
