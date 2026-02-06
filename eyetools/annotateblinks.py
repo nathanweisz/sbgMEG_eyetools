@@ -192,6 +192,77 @@ def add_blinkvec2raw(raw, hp_freq = .1, lp_freq = 10,
                      eoglab=['EOG001'],
                      thresh = 75,
                      ):
+    
+        """
+    Detect eye blinks from an EOG channel and add them to an MNE Raw object
+    as both a binary blink channel and blink annotations.
+
+    Blinks are detected from a band-pass filtered EOG signal using a
+    percentile-based amplitude threshold. Detected blink intervals are
+    encoded as a binary time series (0 = no blink, 1 = blink) and appended
+    to the Raw object as a new channel named ``'BLINK'``. In addition,
+    blink onsets and durations are added as MNE Annotations with the
+    description ``'blink'``.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw M/EEG recording containing at least one EOG channel.
+        The object is modified in-place by adding a new channel and
+        annotations.
+
+    hp_freq : float, optional
+        High-pass filter cutoff frequency (Hz) applied to the EOG signal
+        before blink detection. Defaults to 0.1 Hz.
+
+    lp_freq : float, optional
+        Low-pass filter cutoff frequency (Hz) applied to the EOG signal
+        before blink detection. Defaults to 10 Hz.
+
+    eoglab : list of str, optional
+        List of channel names used for blink detection. Typically a
+        vertical EOG channel (e.g., ``['EOG001']``). Defaults to
+        ``['EOG001']``.
+
+    thresh : float, optional
+        Percentile (0–100) used as the amplitude threshold for blink
+        detection. Higher values make detection more conservative.
+        Passed to ``get_blinks_eog_infos`` as ``threshold_percentile``.
+        Defaults to 75.
+
+    Returns
+    -------
+    raw : mne.io.Raw
+        The modified Raw object containing:
+        - an additional channel named ``'BLINK'`` (type ``'misc'``),
+          where blink periods are marked with 1 and non-blink periods
+          with 0;
+        - MNE Annotations marking blink onsets and durations.
+
+    blinks_df : pandas.DataFrame
+        DataFrame containing blink information as returned by
+        ``get_blinks_eog_infos``. Expected columns include:
+        ``'onset_samples'``, ``'offset_samples'``,
+        ``'onset_sec'``, and ``'duration_sec'``.
+
+    Notes
+    -----
+    - Blink detection is performed on a copy of the raw data to avoid
+      altering the original EOG signal.
+    - The blink vector is aligned to ``raw.n_times`` and clipped to
+      valid sample indices.
+    - The added ``'BLINK'`` channel is intended for analysis convenience
+      (e.g., regression, masking, or visualization), not for artifact
+      correction.
+    - Setting ``ch_types=['eog']`` instead of ``'misc'`` is possible if
+      EOG-specific handling is desired.
+
+    See Also
+    --------
+    mne.Annotations
+    mne.io.Raw.add_channels
+    """
+        
     eogdataraw = raw.copy().filter(hp_freq,lp_freq,picks=eoglab).get_data(picks=eoglab)
  
     blinks_df = get_blinks_eog_infos(
