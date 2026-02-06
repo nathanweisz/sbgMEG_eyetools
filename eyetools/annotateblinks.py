@@ -187,4 +187,58 @@ def get_blinks_eog_infos(
         'duration_sec': (np.array(blink_offsets) - np.array(blink_onsets)) / sampling_rate
     })
 
+#%%
+def add_blinkvec2raw(raw, hp_freq = .1, lp_freq = 10, 
+                     eoglab=['EOG001'],
+                     thresh = 75,
+                     ):
+    eogdataraw = raw.copy().filter(hp_freq,lp_freq,picks=eoglab).get_data(picks=eoglab)
+ 
+    blinks_df = get_blinks_eog_infos(
+        eogdataraw.flatten(),
+        sampling_rate=raw.info["sfreq"],
+        threshold_percentile = thresh
+    )
+
+ 
+    n_samples = eogdataraw.shape[-1]
+    blink_vec = np.zeros(n_samples, dtype=int)
+ 
+    first = raw.first_samp
+    n_samples = raw.n_times
+ 
+    onsets = blinks_df["onset_samples"].to_numpy(int)
+    offsets = blinks_df["offset_samples"].to_numpy(int)
+ 
+    onsets = np.clip(onsets, 0, n_samples)
+    offsets = np.clip(offsets, 0, n_samples)
+ 
+    blink_vec = np.zeros(n_samples, dtype=int)
+    for on, off in zip(onsets, offsets):
+        if off > on:
+            blink_vec[on:off] = 1
+ 
+    info_blink = mne.create_info(
+        ch_names=["BLINK"],
+        sfreq=raw.info["sfreq"],
+        ch_types=["misc"]   # or "eog" if you prefer
+    )
+ 
+    # Create RawArray (needs shape: n_channels x n_times)
+    blink_raw = mne.io.RawArray(
+        blink_vec[np.newaxis, :],
+        info_blink
+    )
+ 
+    # Add to raw
+    raw.add_channels([blink_raw], force_update_info=True)
+ 
+    ann = mne.Annotations(onset=blinks_df['onset_sec'],
+    duration=blinks_df['duration_sec'],
+    description=['blink']*len(blinks_df['onset_sec']))
+ 
+    raw.set_annotations(ann)
+ 
+    return raw, blinks_df
+
 

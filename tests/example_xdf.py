@@ -154,8 +154,8 @@ def lsl2mneraw(
 raw = lsl2mneraw(
     eeg_data,
     eeg_time,
-    eye_data_filt,
-    eye_time_filt,
+    eye_data,
+    eye_time,
     ch_names,
     trigger=trigger,
     trigger_time=trigger_time,)
