@@ -3,6 +3,8 @@
 *.fif
 *.xdf
 
+.DS_Store
+
 .pixi
 pixi.toml
 pixi.lock

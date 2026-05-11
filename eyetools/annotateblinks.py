@@ -180,6 +180,7 @@ def get_blinks_eog_infos(
     
     return pd.DataFrame({
         'peak_samples': blink_peaks,
+        'peak_absamp': eog_clean_abs[blink_peaks],
         'onset_samples': blink_onsets,
         'offset_samples': blink_offsets,
         'onset_sec': np.array(blink_onsets) / sampling_rate,
