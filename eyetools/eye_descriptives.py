@@ -550,3 +550,18 @@ def compute_peak_statistics(
     }
 
     return stats
+
+#%%
+
+def remove_blink_related_peaks(peaks, blinks_df, fs, pre_blink=0.15, post_blink=0.25):
+    keep = np.ones(len(peaks), dtype=bool)
+
+    for _, blink in blinks_df.iterrows():
+        blink_start = int((blink["onset_sec"] - pre_blink) * fs)
+        blink_end = int((blink["offset_sec"] + post_blink) * fs)
+
+        in_blink_window = (peaks >= blink_start) & (peaks <= blink_end)
+        keep[in_blink_window] = False
+
+    return peaks[keep], keep
+
