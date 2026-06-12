@@ -9,6 +9,140 @@ from scipy.stats import skew, entropy
 
 #%%
 
+def pupil_dynamics_measures(
+    pupil,
+    sampling_rate,
+    remove_nan=True,
+    savgol_window=21,
+    savgol_polyorder=2,
+):
+    """
+    Compute summary measures of pupil size and pupil dynamics.
+
+    Parameters
+    ----------
+    pupil : array-like
+        Pupil size signal, e.g. diameter, area, or arbitrary eye-tracker units.
+
+    sampling_rate : float
+        Sampling rate in Hz.
+
+    remove_nan : bool
+        If True, removes samples with NaNs.
+
+    savgol_window : int
+        Window length for Savitzky-Golay smoothing. Must be odd.
+
+    savgol_polyorder : int
+        Polynomial order for Savitzky-Golay smoothing.
+
+    Returns
+    -------
+    pupil_smooth : array
+        Smoothed pupil size signal.
+
+    pupil_derivative : array
+        First derivative of pupil size over time, in pupil-units/second.
+
+    abs_pupil_derivative : array
+        Absolute pupil derivative, reflecting magnitude of dilation/constriction.
+
+    mean_pupil : float
+        Mean pupil size.
+
+    median_pupil : float
+        Median pupil size.
+
+    sd_pupil : float
+        Standard deviation of pupil size.
+
+    pupil_range : float
+        Difference between maximum and minimum pupil size.
+
+    mean_pupil_change : float
+        Mean signed rate of pupil change.
+
+    mean_abs_pupil_change : float
+        Mean absolute rate of pupil change.
+
+    median_abs_pupil_change : float
+        Median absolute rate of pupil change.
+
+    sd_pupil_change : float
+        Standard deviation of signed pupil change.
+
+    p95_abs_pupil_change : float
+        95th percentile of absolute pupil change.
+
+    pupil_path_length : float
+        Cumulative absolute change in pupil size across the recording.
+    """
+
+    pupil = np.asarray(pupil, dtype=float)
+
+    if remove_nan:
+        pupil = pupil[np.isfinite(pupil)]
+
+    if len(pupil) < 2:
+        raise ValueError("Not enough valid pupil samples.")
+
+    if savgol_window >= len(pupil):
+        raise ValueError("savgol_window must be smaller than the number of samples.")
+
+    if savgol_window % 2 == 0:
+        raise ValueError("savgol_window must be odd.")
+
+    if savgol_polyorder >= savgol_window:
+        raise ValueError("savgol_polyorder must be smaller than savgol_window.")
+
+    # ------------------------------------------------------------------
+    # Smooth pupil signal
+    # ------------------------------------------------------------------
+    pupil_s = savgol_filter(pupil, savgol_window, savgol_polyorder)
+
+    # ------------------------------------------------------------------
+    # First derivative of pupil signal
+    # ------------------------------------------------------------------
+    dt = 1 / sampling_rate
+
+    pupil_derivative = np.gradient(pupil_s, dt)
+    abs_pupil_derivative = np.abs(pupil_derivative)
+
+    # ------------------------------------------------------------------
+    # Pupil size statistics
+    # ------------------------------------------------------------------
+    mean_pupil = np.mean(pupil_s)
+    median_pupil = np.median(pupil_s)
+    sd_pupil = np.std(pupil_s)
+    pupil_range = np.max(pupil_s) - np.min(pupil_s)
+
+    # ------------------------------------------------------------------
+    # Pupil dynamics statistics
+    # ------------------------------------------------------------------
+    mean_pupil_change = np.mean(pupil_derivative)
+    mean_abs_pupil_change = np.mean(abs_pupil_derivative)
+    median_abs_pupil_change = np.median(abs_pupil_derivative)
+    sd_pupil_change = np.std(pupil_derivative)
+    p95_abs_pupil_change = np.percentile(abs_pupil_derivative, 95)
+
+    pupil_path_length = np.sum(np.abs(np.diff(pupil_s)))
+
+    return {
+        "pupil_smooth": pupil_s,
+        "pupil_derivative": pupil_derivative,
+        "abs_pupil_derivative": abs_pupil_derivative,
+        "mean_pupil": mean_pupil,
+        "median_pupil": median_pupil,
+        "sd_pupil": sd_pupil,
+        "pupil_range": pupil_range,
+        "mean_pupil_change": mean_pupil_change,
+        "mean_abs_pupil_change": mean_abs_pupil_change,
+        "median_abs_pupil_change": median_abs_pupil_change,
+        "sd_pupil_change": sd_pupil_change,
+        "p95_abs_pupil_change": p95_abs_pupil_change,
+        "pupil_path_length": pupil_path_length,
+    }
+
 
 def ocular_activity_measures(
     x,

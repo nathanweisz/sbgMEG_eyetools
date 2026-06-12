@@ -5,7 +5,7 @@ from eyetools.readeyes import readvpixxmat, make_eye_mne, vpixx_templatecalibrat
 import numpy as np
 from matplotlib import pyplot as plt
 from eyetools.annotateblinks import vpixx_default_blinkmap, call_blink_annotations, add_blinkvec2raw
-from eyetools.eye_descriptives import extract_eye_gazedata, ocular_activity_measures, detect_velocity_peaks, compute_peak_statistics
+from eyetools.eye_descriptives import extract_eye_gazedata, ocular_activity_measures, detect_velocity_peaks, compute_peak_statistics, pupil_dynamics_measures
 
 #%%
 
@@ -36,12 +36,14 @@ raweyes, gazedata = extract_eye_gazedata(rawVPixx, rawMEG)
 
 f, axes = plt.subplots(ncols=2, figsize=(8, 4))
 maxf=50
-axes[0].plot(gazedata['irasa_out'].freqs[:maxf], gazedata['irasa_out'].periodic[0,:maxf])
-axes[1].loglog(gazedata['irasa_out'].freqs[:maxf], gazedata['irasa_out'].aperiodic[0,:maxf  ])
+axes[0].plot(gazedata['irasa_out'].freqs[:maxf], gazedata['irasa_out'].periodic[2,:maxf])
+axes[1].loglog(gazedata['irasa_out'].freqs[:maxf], gazedata['irasa_out'].aperiodic[2,:maxf  ])
 
 # %%
 fs=2000
 gaze_results = ocular_activity_measures(raweyes[0,:], raweyes[1,:], sampling_rate=fs, savgol_window=51,)
+
+pupil_results = pupil_dynamics_measures(raweyes[2,:], sampling_rate=fs, savgol_window=51,)
 
 # %%
 peaks, threshold, above, segments = detect_velocity_peaks(
